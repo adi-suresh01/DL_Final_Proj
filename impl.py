@@ -124,13 +124,26 @@ class JEPA(nn.Module):
             return predicted_states
 
 def compute_loss(predicted_states, target_states):
-    # Normalize the representations
+    # Normalize representations
     predicted_states = F.normalize(predicted_states, dim=-1)
-    target_states = F.normalize(target_states.detach(), dim=-1)  # Stop-gradient on target
+    target_states = F.normalize(target_states.detach(), dim=-1)  # Stop-gradient on targets
 
-    # Compute MSE loss
-    loss = F.mse_loss(predicted_states, target_states)
+    # MSE Loss (Invariance)
+    mse_loss = F.mse_loss(predicted_states, target_states)
+
+    # Variance Regularization
+    pred_std = predicted_states.std(dim=0) + 1e-4  # Add small constant to avoid division by zero
+    var_loss = torch.mean(F.relu(1 - pred_std))
+
+    # Covariance Regularization
+    pred_centered = predicted_states - predicted_states.mean(dim=0, keepdim=True)
+    cov_matrix = (pred_centered.T @ pred_centered) / (predicted_states.size(0) - 1)
+    cov_loss = (cov_matrix - torch.diag(torch.diag(cov_matrix))).pow(2).sum() / predicted_states.size(1)
+
+    # Combine all losses
+    loss = mse_loss + 0.1 * var_loss + 0.1 * cov_loss
     return loss
+
 
 def train_model(model, dataloader, optimizer, num_epochs=10, momentum=0.99, device='cuda'):
     """
