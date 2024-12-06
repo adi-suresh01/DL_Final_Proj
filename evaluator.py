@@ -17,7 +17,6 @@ from dataset import WallDataset
 from normalizer import Normalizer
 
 
-
 @dataclass
 class ProbingConfig(ConfigBase):
     probe_targets: str = "locations"
@@ -115,6 +114,7 @@ class ProbingEvaluator:
                 # TODO: Forward pass through your model
                 init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
                 pred_encs = model(states=init_states, actions=batch.actions)
+                pred_encs = (pred_encs * normalization_params['output_std']) + normalization_params['output_mean']
                 pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
 
                 # Make sure pred_encs has shape (T, BS, D) at this point
