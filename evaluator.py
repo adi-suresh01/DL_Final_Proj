@@ -17,6 +17,7 @@ from dataset import WallDataset
 from normalizer import Normalizer
 
 
+
 @dataclass
 class ProbingConfig(ConfigBase):
     probe_targets: str = "locations"
