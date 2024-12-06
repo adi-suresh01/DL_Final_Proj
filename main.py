@@ -181,6 +181,13 @@ if __name__ == "__main__":
         normalization_params=normalization_params
     )
     
+    probe_train_ds = WallDataset(
+    data_path=f"{data_path}/probe_normal/train",
+    probing=True,
+    device=device,
+    normalization_params=normalization_params,
+    )
+    
     # Create the training DataLoader
     training_loader = DataLoader(
         training_dataset,
