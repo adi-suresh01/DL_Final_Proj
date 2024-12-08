@@ -182,8 +182,7 @@ if __name__ == "__main__":
     )
     
     probe_train_ds = WallDataset(
-        data_path = "/scratch/DL24FA"
-        data_path=f"{data_path}/probe_normal/train",
+        data_path=f"/scratch/DL24FA/probe_normal/train",
         probing=True,
         device=device,
         normalization_params=normalization_params,
