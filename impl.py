@@ -171,9 +171,18 @@ def compute_loss(predicted_states, target_states):
 
 
 
-def train_model(model, dataloader, optimizer, num_epochs=10, momentum=0.99, device='cuda'):
+def train_model(
+    model, 
+    dataloader, 
+    optimizer, 
+    num_epochs=10, 
+    momentum=0.99, 
+    device='cuda', 
+    val_loader=None, 
+    save_path=None
+):
     """
-    Trains the JEPA model using the BYOL framework with tqdm progress bars and validations.
+    Trains the JEPA model using the BYOL framework with tqdm progress bars, validations, and model saving.
     """
     model = model.to(device)
 
@@ -181,88 +190,71 @@ def train_model(model, dataloader, optimizer, num_epochs=10, momentum=0.99, devi
         model.train()
         total_loss = 0.0
 
-        # Initialize tqdm progress bar for batches
+        # Training loop
         with tqdm(total=len(dataloader), desc=f"Epoch [{epoch+1}/{num_epochs}]", unit='batch') as pbar:
             for states, _, actions in dataloader:
-                states = states.to(device)  # Shape: [batch_size, seq_len, channels, height, width]
-                actions = actions.to(device)  # Shape: [batch_size, seq_len - 1, action_dim]
+                states, actions = states.to(device), actions.to(device)
 
-                # **Validation 1: Verify Data Integrity**
-                # Check shapes
-                print(f"States shape: {states.shape}")
-                print(f"Actions shape: {actions.shape}")
-                # Check for NaNs or zeros
+                # Validation 1: Verify Data Integrity
                 assert not torch.isnan(states).any(), "NaNs detected in states."
                 assert not torch.isnan(actions).any(), "NaNs detected in actions."
                 assert states.abs().sum().item() != 0, "States tensor is all zeros."
                 assert actions.abs().sum().item() != 0, "Actions tensor is all zeros."
-                # Check data statistics
-                print(f"States mean: {states.mean().item()}, std: {states.std().item()}")
-                print(f"Actions mean: {actions.mean().item()}, std: {actions.std().item()}")
 
                 optimizer.zero_grad()
 
-                # Forward pass with return_targets=True to get both predicted and target states
+                # Forward pass
                 predicted_states, target_states = model(states, actions, return_targets=True)
-                # predicted_states and target_states shape: [batch_size, seq_len, hidden_dim]
 
-                # **Validation 2: Inspect Model Outputs**
-                # Print mean and std of predicted and target states
-                print(f"Predicted states mean: {predicted_states.mean().item()}, std: {predicted_states.std().item()}")
-                print(f"Target states mean: {target_states.mean().item()}, std: {target_states.std().item()}")
+                # Validation 2: Inspect Model Outputs
+                assert predicted_states.size() == target_states.size(), "Predicted and target states must match in size."
 
-                # Compute difference between predicted and target states
-                difference = (predicted_states - target_states).abs()
-                print(f"Difference mean: {difference.mean().item()}, max: {difference.max().item()}")
-
-                # Flatten the representations to combine batch and sequence dimensions
+                # Flatten the states for loss computation
                 batch_size, seq_len, hidden_dim = predicted_states.size()
                 predicted_states_flat = predicted_states.view(batch_size * seq_len, hidden_dim)
                 target_states_flat = target_states.view(batch_size * seq_len, hidden_dim)
 
-                # **Validation 3: Verify Loss Computation**
-                # Compute loss across all time steps and batch instances
+                # Compute loss
                 loss = compute_loss(predicted_states_flat, target_states_flat)
 
-                # Print loss value
-                print(f"Loss before backward pass: {loss.item()}")
-
-                # Check for NaNs or Infs in loss
-                assert not torch.isnan(loss).any(), "NaNs detected in loss."
-                assert not torch.isinf(loss).any(), "Infs detected in loss."
-                assert loss.item() != 0, "Loss is zero."
-
-                # Backward pass and optimization
+                # Backward pass
                 loss.backward()
 
+                # Gradient clipping
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-                # **Validation 4: Confirm Gradients are Flowing**
-                for name, param in model.named_parameters():
-                    if param.grad is not None:
-                        grad_norm = param.grad.norm().item()
-                        print(f"Gradient norm for {name}: {grad_norm}")
-                    else:
-                        print(f"No gradient computed for {name}")
-
                 optimizer.step()
-
-                # Update the target encoder using exponential moving average
                 model.update_target_encoder(momentum)
 
                 total_loss += loss.item()
-
-                # Update tqdm progress bar
-                pbar.set_postfix({'Loss': f'{loss.item():.6f}'})
+                pbar.set_postfix({'Train Loss': f'{loss.item():.6f}'})
                 pbar.update(1)
 
-            avg_loss = total_loss / len(dataloader)
-            print(f"Epoch [{epoch+1}/{num_epochs}] Average Loss: {avg_loss:.6f}")
+        # Calculate and print average loss for the epoch
+        avg_loss = total_loss / len(dataloader)
+        print(f"Epoch [{epoch+1}/{num_epochs}] Train Loss: {avg_loss:.6f}")
 
-            # **Validation 5: Verify Target Encoder Updates**
+        # Validation loop (if provided)
+        if val_loader:
+            model.eval()
+            val_loss = 0.0
             with torch.no_grad():
-                diffs = []
-                for param, target_param in zip(model.encoder.parameters(), model.target_encoder.parameters()):
-                    diffs.append((param - target_param).abs().mean().item())
-                avg_diff = sum(diffs) / len(diffs)
-                print(f"Average parameter difference between encoder and target encoder: {avg_diff}")
+                for states, _, actions in val_loader:
+                    states, actions = states.to(device), actions.to(device)
+                    predicted_states, target_states = model(states, actions, return_targets=True)
+                    predicted_states_flat = predicted_states.view(batch_size * seq_len, hidden_dim)
+                    target_states_flat = target_states.view(batch_size * seq_len, hidden_dim)
+                    val_loss += compute_loss(predicted_states_flat, target_states_flat).item()
+
+            avg_val_loss = val_loss / len(val_loader)
+            print(f"Epoch [{epoch+1}/{num_epochs}] Validation Loss: {avg_val_loss:.6f}")
+
+        # Save the model checkpoint
+        if save_path:
+            checkpoint = {
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }
+            torch.save(checkpoint, save_path)
+            print(f"Model checkpoint saved at {save_path}")

@@ -1,10 +1,14 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from tqdm import tqdm
+import os
+import pickle
 from dataset import WallDataset, create_wall_dataloader, sequence_transforms
 from evaluator import ProbingEvaluator
-import torch
-from models import MockModel
-import glob
 from impl import JEPA, train_model
 from torch.utils.data import DataLoader
+
 
 def get_device():
     """Check for GPU availability."""
@@ -13,41 +17,100 @@ def get_device():
     return device
 
 
-def load_data(device):
-    data_path = "/scratch/DL24FA"
+def compute_normalization(loader, device):
+    states_sum, states_squared_sum = 0.0, 0.0
+    actions_sum, actions_squared_sum = 0.0, 0.0
+    locations_sum, locations_squared_sum = 0.0, 0.0
+    num_states, num_actions, num_locations = 0, 0, 0
 
-    probe_train_ds = create_wall_dataloader(
-        data_path=f"{data_path}/probe_normal/train",
-        probing=True,
+    for batch in loader:
+        states, actions, locations = batch.states, batch.actions, batch.locations
+        states, actions = states.to(device), actions.to(device)
+
+        # Compute stats for states
+        states_reshaped = states.view(states.size(0) * states.size(1), states.size(2), states.size(3), states.size(4))
+        states_sum += states_reshaped.sum(dim=(0, 2, 3))
+        states_squared_sum += (states_reshaped ** 2).sum(dim=(0, 2, 3))
+        num_states += states_reshaped.numel() / states_reshaped.size(1)
+
+        # Compute stats for actions
+        actions_sum += actions.sum(dim=(0, 1))
+        actions_squared_sum += (actions ** 2).sum(dim=(0, 1))
+        num_actions += actions.numel() / actions.size(-1)
+
+        # Compute stats for locations (if available)
+        if locations.numel() > 0:
+            locations_sum += locations.sum(dim=(0, 1))
+            locations_squared_sum += (locations ** 2).sum(dim=(0, 1))
+            num_locations += locations.numel() / locations.size(-1)
+
+    # Calculate means and stds
+    states_mean = states_sum / num_states
+    states_std = torch.sqrt((states_squared_sum / num_states) - (states_mean ** 2))
+    actions_mean = actions_sum / num_actions
+    actions_std = torch.sqrt((actions_squared_sum / num_actions) - (actions_mean ** 2))
+
+    locations_mean, locations_std = None, None
+    if num_locations > 0:
+        locations_mean = locations_sum / num_locations
+        locations_std = torch.sqrt((locations_squared_sum / num_locations) - (locations_mean ** 2))
+
+    return {
+        'states_mean': states_mean.view(1, -1, 1, 1),
+        'states_std': states_std.view(1, -1, 1, 1),
+        'actions_mean': actions_mean,
+        'actions_std': actions_std,
+        'locations_mean': locations_mean,
+        'locations_std': locations_std
+    }
+
+
+def save_normalization_params(normalization_params, path):
+    with open(path, 'wb') as f:
+        pickle.dump(normalization_params, f)
+
+
+def load_normalization_params(path):
+    if os.path.exists(path):
+        with open(path, 'rb') as f:
+            return pickle.load(f)
+    return None
+
+
+def save_model(model, optimizer, epoch, path):
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict()
+    }
+    torch.save(checkpoint, path)
+    print(f"Model saved to {path}")
+
+
+def load_model(path, model, optimizer=None, device='cuda'):
+    checkpoint = torch.load(path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    if optimizer:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    print(f"Model loaded from {path}")
+    return model, checkpoint['epoch']
+
+
+def create_dataset(data_path, probing, device, transform, normalization_params=None, batch_size=64, shuffle=True):
+    dataset = WallDataset(
+        data_path=data_path,
+        probing=probing,
         device=device,
-        train=True,
+        transform=transform,
+        normalization_params=normalization_params
     )
-
-    probe_val_normal_ds = create_wall_dataloader(
-        data_path=f"{data_path}/probe_normal/val",
-        probing=True,
-        device=device,
-        train=False,
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        drop_last=not probing
     )
-
-    probe_val_wall_ds = create_wall_dataloader(
-        data_path=f"{data_path}/probe_wall/val",
-        probing=True,
-        device=device,
-        train=False,
-    )
-
-    probe_val_ds = {"normal": probe_val_normal_ds, "wall": probe_val_wall_ds}
-    return probe_train_ds, probe_val_ds
-
-
-def load_model():
-    """Load or initialize the model."""
-    # TODO: Replace MockModel with your trained model
-    device = get_device()
-    model = JEPA(input_channels=2, hidden_dim=256, action_dim=2).to(device)
-    #model = MockModel()
-    return model
+    return dataset, dataloader
 
 
 def evaluate_model(device, model, probe_train_ds, probe_val_ds):
@@ -74,136 +137,59 @@ def weights_init(m):
             torch.nn.init.zeros_(m.bias)
 
 
-
 if __name__ == "__main__":
-
     device = get_device()
-    
-    # Load training and validation datasets for probing (if needed)
-    probe_train_ds, probe_val_ds = load_data(device)
-    
+    save_path = "jepa_model.pth"
+
     # Initialize the model
-    model = load_model()
+    model = JEPA(input_channels=2, hidden_dim=256, action_dim=2).to(device)
     model.apply(weights_init)
-    
-    # Create the training dataset (without normalization for now)
-    training_dataset = WallDataset(
-        data_path=f"/scratch/DL24FA/train",
-        probing=False,
-        device=device,
-        transform=sequence_transforms,
-        normalization_params=None  # Will set this after computing mean and std
-    )
-    
 
-    # Create a DataLoader for the training dataset without shuffling
-    temp_loader = DataLoader(
-        training_dataset,
-        batch_size=64,
-        shuffle=False,
-        drop_last=False
-    )
-    
-    # Initialize accumulators for sums and squared sums
-    states_sum = 0.0
-    states_squared_sum = 0.0
-    actions_sum = 0.0
-    actions_squared_sum = 0.0
-    locations_sum = 0.0
-    locations_squared_sum = 0.0
-    num_states = 0
-    num_actions = 0
-    num_locations = 0
+    # Load normalization parameters
+    norm_path = "/scratch/DL24FA/normalization_params.pkl"
+    normalization_params = load_normalization_params(norm_path)
+    if normalization_params is None:
+        temp_dataset, temp_loader = create_dataset(
+            data_path=f"/scratch/DL24FA/train",
+            probing=False,
+            device=device,
+            transform=sequence_transforms,
+            normalization_params=None,
+            batch_size=64,
+            shuffle=False
+        )
+        normalization_params = compute_normalization(temp_loader, device)
+        save_normalization_params(normalization_params, norm_path)
 
-    for batch in temp_loader:
-        states, actions, locations = batch.states, batch.actions, batch.locations  # Access batch data
-        batch_size = states.size(0)
-        seq_len = states.size(1)
-        num_channels = states.size(2)
-        height = states.size(3)
-        width = states.size(4)
-        
-        # Reshape states to [batch_size * seq_len, channels, height, width]
-        states_reshaped = states.view(-1, num_channels, height, width)
-        num_pixels = states_reshaped.numel() / num_channels
-
-        # Accumulate sums and squared sums for states
-        states_sum += states_reshaped.sum(dim=(0, 2, 3))
-        states_squared_sum += (states_reshaped ** 2).sum(dim=(0, 2, 3))
-        num_states += num_pixels
-
-        # Accumulate sums and squared sums for actions
-        actions_sum += actions.sum(dim=(0, 1))
-        actions_squared_sum += (actions ** 2).sum(dim=(0, 1))
-        num_actions += actions.numel() / actions.size(-1)
-
-        # Accumulate sums and squared sums for locations (if available)
-        if locations.numel() != 0:
-            locations_sum += locations.sum(dim=(0, 1))
-            locations_squared_sum += (locations ** 2).sum(dim=(0, 1))
-            num_locations += locations.numel() / locations.size(-1)
-
-    # Compute mean and std for states
-    states_mean = states_sum / num_states
-    states_var = (states_squared_sum / num_states) - (states_mean ** 2)
-    states_std = torch.sqrt(states_var)
-
-    # Compute mean and std for actions
-    actions_mean = actions_sum / num_actions
-    actions_var = (actions_squared_sum / num_actions) - (actions_mean ** 2)
-    actions_std = torch.sqrt(actions_var)
-
-    # Compute mean and std for locations (if available)
-    if num_locations > 0:
-        locations_mean = locations_sum / num_locations
-        locations_var = (locations_squared_sum / num_locations) - (locations_mean ** 2)
-        locations_std = torch.sqrt(locations_var)
-    else:
-        locations_mean = None
-        locations_std = None
-
-    # Create normalization parameters dictionary
-    normalization_params = {
-        'states_mean': states_mean.view(1, -1, 1, 1),  # Shape [1, C, 1, 1]
-        'states_std': states_std.view(1, -1, 1, 1),
-        'actions_mean': actions_mean,
-        'actions_std': actions_std,
-        'locations_mean': locations_mean,
-        'locations_std': locations_std
-    }
-
-    # Recreate the training dataset with normalization parameters
-    training_dataset = WallDataset(
+    # Create datasets and dataloaders
+    training_dataset, training_loader = create_dataset(
         data_path=f"/scratch/DL24FA/train",
         probing=False,
         device=device,
         transform=sequence_transforms,
         normalization_params=normalization_params
     )
-    
-    probe_train_ds = WallDataset(
-        data_path=f"/scratch/DL24FA/probe_normal/train",
+    val_dataset, val_loader = create_dataset(
+        data_path=f"/scratch/DL24FA/probe_normal/val",
         probing=True,
         device=device,
-        normalization_params=normalization_params,
+        transform=sequence_transforms,
+        normalization_params=normalization_params
     )
 
-    # Create the training DataLoader
-    training_loader = DataLoader(
-        training_dataset,
-        batch_size=64,
-        shuffle=True,
-        drop_last=True
-    )
-
-    # Create the optimizer
+    # Create optimizer
     optimizer = torch.optim.Adam(
         list(model.encoder.parameters()) + list(model.predictor.parameters()),
         lr=1e-4
     )
-    
-    # Train the model
-    train_model(model, training_loader, optimizer, num_epochs=10, device=device)
-    
+
+    # Check if a saved model exists
+    try:
+        model, start_epoch = load_model(save_path, model, optimizer, device=device)
+    except FileNotFoundError:
+        print("No pre-trained model found. Training a new model.")
+        train_model(model, training_loader, val_loader, optimizer, num_epochs=10, device=device, save_path=save_path)
+
     # Evaluate the model
+    probe_train_ds, probe_val_ds = load_data(device)
     evaluate_model(device, model, probe_train_ds, probe_val_ds)

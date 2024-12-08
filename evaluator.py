@@ -113,9 +113,33 @@ class ProbingEvaluator:
                 ################################################################################
                 # TODO: Forward pass through your model
                 # Replace the forward pass for prediction in ProbingEvaluator.train_pred_prober and evaluate_pred_prober
-                init_states = batch.states[:, 0:1]  # Initial state
-                pred_encs, _ = model(states=batch.states, actions=batch.actions, return_targets=True)
-                pred_encs = pred_encs.transpose(0, 1)  # Adjust to T x BS x D
+                                ################################################################################
+                # Forward pass through your model (updated with latest impl and main changes)
+                init_states = batch.states[:, 0:1]  # Initial state (BS, 1, C, H, W)
+                
+                # Get predictions and targets using the model's forward method
+                pred_encs, _ = model(
+                    states=batch.states,
+                    actions=batch.actions,
+                    return_targets=True
+                )
+                
+                # Transpose to shape (T, BS, D) for timestep-based processing
+                pred_encs = pred_encs.transpose(0, 1)  # Timestep first
+                
+                # Ensure tensors are detached to prevent backprop during evaluation
+                pred_encs = pred_encs.detach()
+                
+                # Normalize the target locations
+                target = getattr(batch, "locations").to(self.device)
+                target = self.normalizer.normalize_location(target)
+
+                # Sampling timesteps for reduced memory usage (if applicable)
+                if config.sample_timesteps is not None and config.sample_timesteps < pred_encs.shape[0]:
+                    indices = torch.randperm(pred_encs.shape[0])[:config.sample_timesteps]
+                    pred_encs = pred_encs[indices]
+                    target = target[:, indices]
+                ################################################################################
 
                 # Make sure pred_encs has shape (T, BS, D) at this point
                 ################################################################################
