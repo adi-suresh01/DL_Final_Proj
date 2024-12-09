@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from tqdm import tqdm
 import os
 import pickle
 from dataset import WallDataset, sequence_transforms
@@ -18,6 +16,7 @@ def get_device():
 
 
 def compute_normalization(loader, device):
+    """Compute normalization parameters for states, actions, and locations."""
     states_sum, states_squared_sum = 0.0, 0.0
     actions_sum, actions_squared_sum = 0.0, 0.0
     locations_sum, locations_squared_sum = 0.0, 0.0
@@ -104,6 +103,7 @@ def create_dataset(data_path, probing, device, transform, normalization_params=N
 
 
 def evaluate_model(device, model, probe_train_ds, probe_val_ds):
+    """Evaluate the model using ProbingEvaluator."""
     evaluator = ProbingEvaluator(
         device=device,
         model=model,
@@ -113,7 +113,6 @@ def evaluate_model(device, model, probe_train_ds, probe_val_ds):
     )
 
     prober = evaluator.train_pred_prober()
-
     avg_losses = evaluator.evaluate_all(prober=prober)
 
     for probe_attr, loss in avg_losses.items():
@@ -128,15 +127,16 @@ def weights_init(m):
 
 
 if __name__ == "__main__":
+    # Set device and paths
     device = get_device()
-    save_path = "/scratch/as17339/jepa_model.pth"
+    save_path = "/scratch/as17339/jepa_model_vicreg.pth"
+    norm_path = "/scratch/as17339/normalization_params_vicreg.pkl"
 
-    # Initialize the model
+    # Initialize model
     model = JEPA(input_channels=2, hidden_dim=256, action_dim=2).to(device)
     model.apply(weights_init)
 
-    # Load normalization parameters
-    norm_path = "/scratch/as17339/normalization_params.pkl"
+    # Load or compute normalization parameters
     normalization_params = load_normalization_params(norm_path)
     if normalization_params is None:
         temp_dataset, temp_loader = create_dataset(
@@ -178,8 +178,17 @@ if __name__ == "__main__":
         model, start_epoch = load_model(save_path, model, optimizer, device=device)
     except FileNotFoundError:
         print("No pre-trained model found. Training a new model.")
-        train_model(model, training_loader, optimizer, val_loader, num_epochs=10, device=device, save_path=save_path)
+        train_model(
+            model=model,
+            dataloader=training_loader,
+            optimizer=optimizer,
+            val_loader=val_loader,
+            num_epochs=10,
+            device=device,
+            save_path=save_path,
+            momentum=0.99
+        )
 
     # Evaluate the model
-    probe_train_ds, probe_val_ds = load_data(device)
+    probe_train_ds, probe_val_ds = val_dataset, val_loader
     evaluate_model(device, model, probe_train_ds, probe_val_ds)

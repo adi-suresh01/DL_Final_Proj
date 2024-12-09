@@ -154,20 +154,18 @@ class JEPA(nn.Module):
 
 # Symmetrized Loss Function
 def compute_loss(predicted_states, target_states):
+    """
+    VICReg Loss with invariance, variance, and covariance regularizations.
+    """
     predicted_states = F.normalize(predicted_states, dim=-1)
-    target_states = F.normalize(target_states.detach(), dim=-1)
+    target_states = F.normalize(target_states, dim=-1)
 
-    mse_loss = F.mse_loss(predicted_states, target_states)
+    invariance_loss = F.mse_loss(predicted_states, target_states)
 
-    pred_std = predicted_states.std(dim=0) + 1e-4
-    var_loss = torch.mean(F.relu(1 - pred_std))
+    variance_loss = torch.mean(F.relu(1 - predicted_states.std(dim=0)))
+    covariance_loss = ((predicted_states.T @ predicted_states) / predicted_states.size(0)).sum()
 
-    pred_centered = predicted_states - predicted_states.mean(dim=0, keepdim=True)
-    cov_matrix = (pred_centered.T @ pred_centered) / (predicted_states.size(0) - 1)
-    cov_loss = (cov_matrix - torch.diag(torch.diag(cov_matrix))).pow(2).sum() / predicted_states.size(1)
-
-    loss = mse_loss + 0.1 * var_loss + 0.1 * cov_loss
-    return loss
+    return invariance_loss + 0.1 * variance_loss + 0.1 * covariance_loss
 
 
 def save_model(model, optimizer, epoch, path):
