@@ -178,7 +178,7 @@ if __name__ == "__main__":
         model, start_epoch = load_model(save_path, model, optimizer, device=device)
     except FileNotFoundError:
         print("No pre-trained model found. Training a new model.")
-        train_model(model, training_loader, val_loader, optimizer, num_epochs=10, device=device, save_path=save_path)
+        train_model(model, training_loader, optimizer, val_loader, num_epochs=10, device=device, save_path=save_path)
 
     # Evaluate the model
     probe_train_ds, probe_val_ds = load_data(device)

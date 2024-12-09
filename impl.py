@@ -183,8 +183,8 @@ def save_model(model, optimizer, epoch, path):
 def train_model(
     model, 
     dataloader, 
-    val_loader=None,
     optimizer, 
+    val_loader=None,
     num_epochs=10,  
     device='cuda',  
     save_path=None,
