@@ -64,25 +64,25 @@ def compute_normalization(loader, device):
     }
 
 
-def save_normalization_params(normalization_params, path):
-    with open(path, 'wb') as f:
-        pickle.dump(normalization_params, f)
+# def save_normalization_params(normalization_params, path):
+#     with open(path, 'wb') as f:
+#         pickle.dump(normalization_params, f)
 
 
-def load_normalization_params(path):
-    if os.path.exists(path):
-        with open(path, 'rb') as f:
-            return pickle.load(f)
-    return None
+# def load_normalization_params(path):
+#     if os.path.exists(path):
+#         with open(path, 'rb') as f:
+#             return pickle.load(f)
+#     return None
 
 
-def load_model(path, model, optimizer=None, device='cuda'):
-    checkpoint = torch.load(path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    if optimizer:
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    print(f"Model loaded from {path}")
-    return model, checkpoint['epoch']
+# def load_model(path, model, optimizer=None, device='cuda'):
+#     checkpoint = torch.load(path, map_location=device)
+#     model.load_state_dict(checkpoint['model_state_dict'])
+#     if optimizer:
+#         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+#     print(f"Model loaded from {path}")
+#     return model, checkpoint['epoch']
 
 
 def create_dataset(data_path, probing, device, transform, normalization_params=None, batch_size=64, shuffle=True):
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     model.apply(weights_init)
 
     # Load or compute normalization parameters
-    normalization_params = load_normalization_params(norm_path)
+    # normalization_params = load_normalization_params(norm_path)
     if normalization_params is None:
         temp_dataset, temp_loader = create_dataset(
             data_path=f"/scratch/DL24FA/train",
@@ -149,7 +149,7 @@ if __name__ == "__main__":
             shuffle=False
         )
         normalization_params = compute_normalization(temp_loader, device)
-        save_normalization_params(normalization_params, norm_path)
+        # save_normalization_params(normalization_params, norm_path)
 
     # Create datasets and dataloaders
     training_dataset, training_loader = create_dataset(
@@ -174,20 +174,20 @@ if __name__ == "__main__":
     )
 
     # Check if a saved model exists
-    try:
-        model, start_epoch = load_model(save_path, model, optimizer, device=device)
-    except FileNotFoundError:
-        print("No pre-trained model found. Training a new model.")
-        train_model(
-            model=model,
-            dataloader=training_loader,
-            optimizer=optimizer,
-            val_loader=val_loader,
-            num_epochs=10,
-            device=device,
-            save_path=save_path,
-            momentum=0.99
-        )
+    # try:
+    #     model, start_epoch = load_model(save_path, model, optimizer, device=device)
+    # except FileNotFoundError:
+    #     print("No pre-trained model found. Training a new model.")
+    train_model(
+        model=model,
+        dataloader=training_loader,
+        optimizer=optimizer,
+        val_loader=val_loader,
+        num_epochs=10,
+        device=device,
+        save_path=save_path,
+        momentum=0.99
+    )
 
     # Evaluate the model
     probe_train_ds, probe_val_ds = val_dataset, val_loader

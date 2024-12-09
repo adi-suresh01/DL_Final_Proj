@@ -80,7 +80,7 @@ class PredictorNetwork(nn.Module):
             nn.Linear(hidden_dim + hidden_dim // 2, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.SiLU(),
-            nn.Dropout(p=0.5),  # Dropout for regularization
+            nn.Dropout(p=0.3),  # Dropout for regularization
             nn.Linear(hidden_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.SiLU(),
