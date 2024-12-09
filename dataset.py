@@ -181,7 +181,6 @@ def adjust_actions_rotation(actions, angle_degrees):
 
 sequence_transforms = transforms.Compose([
     RandomHorizontalFlipSequence(p=0.5),
-    RandomVerticalFlipSequence(p=0.5),
     RandomRotationSequence(degrees=10),
     RandomBrightnessContrastSequence(brightness=0.3, contrast=0.3),
     # Add more transformations here if needed
