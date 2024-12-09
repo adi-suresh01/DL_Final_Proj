@@ -183,12 +183,12 @@ def save_model(model, optimizer, epoch, path):
 def train_model(
     model, 
     dataloader, 
+    val_loader=None,
     optimizer, 
-    num_epochs=10, 
-    momentum=0.99, 
-    device='cuda', 
-    val_loader=None, 
-    save_path=None
+    num_epochs=10,  
+    device='cuda',  
+    save_path=None,
+    momentum=0.99
 ):
     """
     Trains the JEPA model using the BYOL framework with tqdm progress bars, validations, and model saving.
