@@ -77,16 +77,6 @@ def load_normalization_params(path):
     return None
 
 
-def save_model(model, optimizer, epoch, path):
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict()
-    }
-    torch.save(checkpoint, path)
-    print(f"Model saved to {path}")
-
-
 def load_model(path, model, optimizer=None, device='cuda'):
     checkpoint = torch.load(path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
@@ -139,14 +129,14 @@ def weights_init(m):
 
 if __name__ == "__main__":
     device = get_device()
-    save_path = "jepa_model.pth"
+    save_path = "/scratch/as17339/jepa_model.pth"
 
     # Initialize the model
     model = JEPA(input_channels=2, hidden_dim=256, action_dim=2).to(device)
     model.apply(weights_init)
 
     # Load normalization parameters
-    norm_path = "/scratch/DL24FA/normalization_params.pkl"
+    norm_path = "/scratch/as17339/normalization_params.pkl"
     normalization_params = load_normalization_params(norm_path)
     if normalization_params is None:
         temp_dataset, temp_loader = create_dataset(

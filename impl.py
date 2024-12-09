@@ -170,6 +170,15 @@ def compute_loss(predicted_states, target_states):
     return loss
 
 
+def save_model(model, optimizer, epoch, path):
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict()
+    }
+    torch.save(checkpoint, path)
+    print(f"Model saved to {path}")
+
 
 def train_model(
     model, 
@@ -251,10 +260,4 @@ def train_model(
 
         # Save the model checkpoint
         if save_path:
-            checkpoint = {
-                'epoch': epoch + 1,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-            }
-            torch.save(checkpoint, save_path)
-            print(f"Model checkpoint saved at {save_path}")
+            save_model(model, optimizer, epoch + 1, save_path)
