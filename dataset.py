@@ -77,6 +77,11 @@ class RandomBrightnessContrastSequence(object):
 
     def __call__(self, sample):
         img_sequence, actions, locations = sample["states"], sample["actions"], sample["locations"]
+
+        # Skip if non-standard channels
+        if img_sequence[0].shape[0] not in [1, 3]:  # Only apply to grayscale or RGB
+            return {"states": img_sequence, "actions": actions, "locations": locations}
+
         img_sequence = [
             TF.adjust_brightness(img, 1 + random.uniform(-self.brightness, self.brightness)) for img in img_sequence
         ]
