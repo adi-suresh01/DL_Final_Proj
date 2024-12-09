@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import os
 import pickle
-from dataset import WallDataset, create_wall_dataloader, sequence_transforms
+from dataset import WallDataset, sequence_transforms
 from evaluator import ProbingEvaluator
 from impl import JEPA, train_model
 from torch.utils.data import DataLoader
