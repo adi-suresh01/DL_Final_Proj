@@ -138,6 +138,8 @@ if __name__ == "__main__":
 
     # Load or compute normalization parameters
     # normalization_params = load_normalization_params(norm_path)
+    
+    normalization_params = compute_normalization(temp_loader, device)
     if normalization_params is None:
         temp_dataset, temp_loader = create_dataset(
             data_path=f"/scratch/DL24FA/train",
@@ -148,7 +150,6 @@ if __name__ == "__main__":
             batch_size=64,
             shuffle=False
         )
-        normalization_params = compute_normalization(temp_loader, device)
         # save_normalization_params(normalization_params, norm_path)
 
     # Create datasets and dataloaders
