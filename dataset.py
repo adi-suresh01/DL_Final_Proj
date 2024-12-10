@@ -44,39 +44,34 @@ class WallDataset:
         return len(self.states)
 
     def __getitem__(self, i):
-        states = torch.from_numpy(self.states[i].copy()).float().to(self.device)
-        actions = torch.from_numpy(self.actions[i].copy()).float().to(self.device)
+    states = torch.from_numpy(self.states[i].copy()).float().to(self.device)
+    actions = torch.from_numpy(self.actions[i].copy()).float().to(self.device)
 
-        if self.locations is not None:
-            locations = torch.from_numpy(self.locations[i].copy()).float().to(self.device)
-        else:
-            locations = torch.empty(0).to(self.device)
+    if self.locations is not None:
+        locations = torch.from_numpy(self.locations[i].copy()).float().to(self.device)
+    else:
+        locations = torch.empty(0).to(self.device)
 
-        sample = {"states": states, "actions": actions, "locations": locations}
+    # Add a sequence dimension if it doesn't exist
+    if states.ndim == 3:
+        states = states.unsqueeze(0)
 
-        if self.transform:
-            sample = self.transform(sample)
-            # Ensure that states are returned as a list of individual tensors
-            if isinstance(sample["states"], torch.Tensor):
-                sample["states"] = [sample["states"]]
+    sample = {"states": states, "actions": actions, "locations": locations}
 
-        # Stack states if they are a list
-        if isinstance(sample["states"], list):
-            states = torch.stack(sample["states"])  # Shape: [seq_len, channels, height, width]
-        else:
-            states = sample["states"]
-
+    if self.transform:
+        sample = self.transform(sample)
+        states = torch.stack(sample["states"])
         actions = sample["actions"]
         locations = sample["locations"]
 
-        if self.normalization_params is not None:
-            states = (states - self.normalization_params["states_mean"]) / self.normalization_params["states_std"]
-            actions = (actions - self.normalization_params["actions_mean"]) / self.normalization_params["actions_std"]
+    if self.normalization_params is not None:
+        states = (states - self.normalization_params["states_mean"]) / self.normalization_params["states_std"]
+        actions = (actions - self.normalization_params["actions_mean"]) / self.normalization_params["actions_std"]
 
-            if self.locations is not None:
-                locations = (locations - self.normalization_params["locations_mean"]) / self.normalization_params["locations_std"]
+        if self.locations is not None:
+            locations = (locations - self.normalization_params["locations_mean"]) / self.normalization_params["locations_std"]
 
-        return WallSample(states=states, locations=locations, actions=actions)
+    return WallSample(states=states, locations=locations, actions=actions)
 
 
 class RandomBrightnessContrastSequence(object):

@@ -70,6 +70,8 @@ class JEPA(nn.Module):
         self.temporal_model = TemporalModel(hidden_dim)
 
     def forward(self, states, actions):
+        if states.ndim != 5:
+            raise ValueError(f"Expected states to have 5 dimensions, but got {states.ndim} dimensions.")
         batch_size, seq_len, _, _, _ = states.size()
         state_embeddings = []
         action_embeddings = []
