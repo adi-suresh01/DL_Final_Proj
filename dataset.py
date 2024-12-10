@@ -56,9 +56,18 @@ class WallDataset:
 
         if self.transform:
             sample = self.transform(sample)
+            # Ensure that states are returned as a list of individual tensors
+            if isinstance(sample["states"], torch.Tensor):
+                sample["states"] = [sample["states"]]
+
+        # Stack states if they are a list
+        if isinstance(sample["states"], list):
             states = torch.stack(sample["states"])  # Shape: [seq_len, channels, height, width]
-            actions = sample["actions"]
-            locations = sample["locations"]
+        else:
+            states = sample["states"]
+
+        actions = sample["actions"]
+        locations = sample["locations"]
 
         if self.normalization_params is not None:
             states = (states - self.normalization_params["states_mean"]) / self.normalization_params["states_std"]
