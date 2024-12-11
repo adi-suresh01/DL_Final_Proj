@@ -52,22 +52,21 @@ class WallDataset:
         else:
             locations = torch.empty(0).to(self.device)
 
-        # Add a sequence dimension if it doesn't exist
-        if states.ndim == 3:  # If states are [C, H, W] instead of [Seq, C, H, W]
-            states = states.unsqueeze(0)
+        # Ensure states have the correct shape
+        if states.ndim == 3:  # If states are [C, H, W]
+            states = states.unsqueeze(0)  # Add sequence dimension
 
         sample = {"states": [states], "actions": actions, "locations": locations}
 
         if self.transform:
             sample = self.transform(sample)
 
-        # Ensure `states` is a list of tensors
+        # Ensure states is a list of tensors
         if isinstance(sample["states"], torch.Tensor):  # If transform didn't create a list
             sample["states"] = [sample["states"]]
 
+        # Ensure states are stacked correctly
         states = torch.stack(sample["states"])  # Shape: [seq_len, channels, height, width]
-        actions = sample["actions"]
-        locations = sample["locations"]
 
         if self.normalization_params is not None:
             states = (states - self.normalization_params["states_mean"]) / self.normalization_params["states_std"]
